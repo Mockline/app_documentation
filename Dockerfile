@@ -1,35 +1,40 @@
 # Stage 1: Build Stage
-FROM oven/bun:latest AS build
+FROM node:18 AS build
 
-ARG TURBO_TEAM
-ARG TURBO_TOKEN
-
-ENV TURBO_TEAM=$TURBO_TEAM
-ENV TURBO_TOKEN=$TURBO_TOKEN
-ENV NODE_ENV=production
-
+# Set the working directory
 WORKDIR /app
 
-COPY package.json ./
-COPY bun.lockb ./
+# Copy package.json and package-lock.json
+COPY package*.json ./
 
-COPY apps/docs/package.json ./apps/docs/package.json
+# Install dependencies
+RUN npm install
 
+# Copy the rest of the application files
 COPY . .
 
-RUN bun install
+# Rebuild native modules
+RUN npm rebuild better-sqlite3
 
-RUN bun run dev:prepare
 
-RUN bun run build:docs
+# Build the application
+RUN npm run build
 
-# Stage 2: Final Stage
-FROM oven/bun:latest
+# Stage 2: Production Stage
+FROM node:18 AS production
 
+# Set the working directory
 WORKDIR /app
 
-COPY --from=build /app/apps/docs/.output .output
+# Copy only the necessary files from the build stage
+COPY --from=build /app/.output ./.output
+COPY --from=build /app/package*.json ./
 
+# Install only production dependencies
+RUN npm install --only=production
+
+# Expose the application port
 EXPOSE 3000
 
-CMD ["bun", "run", ".output/server/index.mjs"]
+# Start the application
+CMD ["node", ".output/server/index.mjs"]
